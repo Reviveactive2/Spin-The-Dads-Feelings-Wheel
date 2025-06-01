@@ -1,48 +1,10 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dad Feelings Spinner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap" rel="stylesheet">
   <style>
     body {
       font-family: 'Poppins', sans-serif;
@@ -91,6 +53,7 @@
       text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
       text-transform: uppercase;
       letter-spacing: 1px;
+      pointer-events: none;
     }
     #wheel div:nth-child(1) { transform: rotate(0deg); }
     #wheel div:nth-child(2) { transform: rotate(72deg); }
@@ -121,6 +84,10 @@
       border-radius: 50px;
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
       transition: transform 0.2s, background 0.2s;
+      outline: 2px solid transparent;
+    }
+    #spinButton:focus {
+      outline: 2px solid #fff;
     }
     #spinButton:hover {
       background: #d97706;
@@ -138,6 +105,7 @@
       padding: 10px 20px;
       border-radius: 10px;
       animation: fadeIn 0.5s ease-in;
+      min-height: 50px;
     }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
@@ -148,25 +116,12 @@
       50% { transform: scale(1.1); }
       100% { transform: scale(1); }
     }
-    .confetti {
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      background: #fff;
-      opacity: 0.8;
-      animation: fall 2s linear infinite;
-    }
-    @keyframes fall {
-      0% { transform: translateY(-100vh) rotate(0deg); opacity: 0.8; }
-      100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
-    }
   </style>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="wheelContainer">
-    <div id="pointer"></div>
-    <div id="wheel">
+    <div id="pointer" aria-hidden="true"></div>
+    <div id="wheel" aria-label="Dad Feelings Wheel" role="region" tabindex="0">
       <div>Proud</div>
       <div>Stressed</div>
       <div>Joyful</div>
@@ -174,52 +129,67 @@
       <div>Grateful</div>
     </div>
   </div>
-  <button id="spinButton">Spin the Dad Feelings Wheel!</button>
-  <div id="result"></div>
+  <button id="spinButton" aria-label="Spin the Dad Feelings Wheel!">Spin the Dad Feelings Wheel!</button>
+  <div id="result" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/js-confetti@0.11.0/dist/js-confetti.browser.js"></script>
   <script>
-    const wheel = document.getElementById('wheel');
-    const spinButton = document.getElementById('spinButton');
-    const result = document.getElementById('result');
-    const confetti = new JSConfetti();
-    const segments = ['Proud', 'Stressed', 'Joyful', 'Tired', 'Grateful'];
-    const messages = {
-      'Proud': 'You’re a rockstar dad! Share your proudest moment! #ProudDadMoments',
-      'Stressed': 'Take a deep breath, dad! Try a quick walk. Share your stress tip! #DadMentalHealth',
-      'Joyful': 'That’s the dad spirit! What’s sparking your joy? Tell us! #DadLife',
-      'Tired': 'We get it, dad! Grab a coffee. What keeps you going? #DadTipTuesday',
-      'Grateful': 'Love the vibes! What’s one thing you’re thankful for? Share it! #DadLife'
-    };
+    window.addEventListener('DOMContentLoaded', function() {
+      const wheel = document.getElementById('wheel');
+      const spinButton = document.getElementById('spinButton');
+      const result = document.getElementById('result');
+      let confetti;
+      try {
+        confetti = new JSConfetti();
+      } catch (e) {
+        confetti = { addConfetti: () => {} }; // fallback: do nothing if JSConfetti fails
+      }
+      const segments = ['Proud', 'Stressed', 'Joyful', 'Tired', 'Grateful'];
+      const messages = {
+        'Proud': 'You’re a rockstar dad! Share your proudest moment! #ProudDadMoments',
+        'Stressed': 'Take a deep breath, dad! Try a quick walk. Share your stress tip! #DadMentalHealth',
+        'Joyful': 'That’s the dad spirit! What’s sparking your joy? Tell us! #DadLife',
+        'Tired': 'We get it, dad! Grab a coffee. What keeps you going? #DadTipTuesday',
+        'Grateful': 'Love the vibes! What’s one thing you’re thankful for? Share it! #DadLife'
+      };
 
-    spinButton.addEventListener('click', () => {
-      spinButton.disabled = true;
-      const randomDegree = Math.floor(Math.random() * 360);
-      wheel.style.transition = 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)';
-      wheel.style.transform = `rotate(${randomDegree + 1440}deg)`;
-      
-      // Add confetti effect
-      confetti.addConfetti({
-        emojis: ['🦁', '🚀', '🛠️'],
-        confettiNumber: 50,
-        confettiRadius: 6
+      spinButton.addEventListener('click', () => {
+        spinButton.disabled = true;
+        result.textContent = 'Spinning...';
+        const randomDegree = Math.floor(Math.random() * 360);
+        // Spin the wheel (plus 4 full rotations for effect)
+        wheel.style.transition = 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)';
+        wheel.style.transform = `rotate(${randomDegree + 1440}deg)`;
+
+        // Confetti effect
+        confetti.addConfetti({
+          emojis: ['🦁', '🚀', '🛠️'],
+          confettiNumber: 50,
+          confettiRadius: 6
+        });
+
+        // Play spin sound (simple beep)
+        try {
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const oscillator = audioCtx.createOscillator();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+          oscillator.connect(audioCtx.destination);
+          oscillator.start();
+          oscillator.stop(audioCtx.currentTime + 0.1);
+        } catch (e) {
+          // Fail silently if AudioContext is blocked or not supported
+        }
+
+        setTimeout(() => {
+          // Determine which segment was selected
+          const normalizedDegree = (randomDegree % 360 + 360) % 360; // always positive
+          const segmentIndex = Math.floor(normalizedDegree / 72) % segments.length;
+          const selectedFeeling = segments[segmentIndex];
+          result.textContent = `You’re feeling: ${selectedFeeling}! ${messages[selectedFeeling]}`;
+          result.style.animation = 'pulse 0.5s ease-in-out';
+          spinButton.disabled = false;
+        }, 4000);
       });
-
-      // Play spin sound (using Web Audio API for a simple tick sound)
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
-      oscillator.connect(audioCtx.destination);
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.1);
-
-      setTimeout(() => {
-        const segmentIndex = Math.floor(((randomDegree % 360) / 72)) % segments.length;
-        const selectedFeeling = segments[segmentIndex];
-        result.textContent = `You’re feeling: ${selectedFeeling}! ${messages[selectedFeeling]}`;
-        result.style.animation = 'pulse 0.5s ease-in-out';
-        spinButton.disabled = false;
-      }, 4000);
     });
   </script>
 </body>
